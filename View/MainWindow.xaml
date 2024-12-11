@@ -8,31 +8,6 @@
         Title="图像处理" Height="400" Width="800"
         WindowStartupLocation="CenterScreen">
     
-    <Window.Resources>
-        <Style x:Key="ButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="15,5"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Background" Value="#FF0099FF"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#FF007ACC"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-        
-        <!-- 红色按钮样式 -->
-        <Style x:Key="RedButtonStyle" TargetType="Button" BasedOn="{StaticResource ButtonStyle}">
-            <Setter Property="Background" Value="#FFE31123"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#FFB90D1C"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-    </Window.Resources>
-    
     <Grid Margin="20">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -48,7 +23,7 @@
             </Grid.RowDefinitions>
 
             <!-- 文件列表标题和添加按钮 -->
-            <Grid>
+            <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -62,13 +37,12 @@
                 <Button Grid.Column="2"
                         Content="+ 添加图像" 
                         Command="{Binding AddImagesCommand}"
-                        Style="{StaticResource ButtonStyle}"/>
+                        Style="{StaticResource ButtonStyle}"
+                        Width="120"/>
             </Grid>
 
             <!-- 文件列表区域 -->
             <ListBox Grid.Row="1" 
-                     Height="150"
-                     Margin="0,10"
                      ItemsSource="{Binding ImageFiles}"
                      SelectedItem="{Binding SelectedFile}"
                      SelectionMode="Extended"
@@ -95,17 +69,28 @@
                         Orientation="Horizontal" 
                         HorizontalAlignment="Left"
                         Margin="0,10,0,0">
-                <ComboBox Width="150" 
-                          Height="30"
+                <ComboBox Width="110" 
+                          Height="35"
                           ItemsSource="{Binding ProcessTypes}"
-                          SelectedItem="{Binding SelectedProcessType}"/>
+                          SelectedItem="{Binding SelectedProcessType}"
+                          VerticalContentAlignment="Center"
+                          FontSize="14">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}"
+                                       VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <Button Content="开始处理" 
                         Command="{Binding StartProcessCommand}"
                         Margin="10,0"
-                        Style="{StaticResource ButtonStyle}"/>
+                        Style="{StaticResource ButtonStyle}"
+                        Width="90"/>
                 <Button Content="取消处理" 
                         Command="{Binding CancelProcessCommand}"
-                        Style="{StaticResource ButtonStyle}"/>
+                        Style="{StaticResource ButtonStyle}"
+                        Width="90"/>
             </StackPanel>
         </Grid>
         
@@ -116,17 +101,17 @@
             <Button Command="{Binding RemoveSelectedCommand}"
                     Style="{StaticResource RedButtonStyle}"
                     Margin="0,0,0,10"
-                    Width="150">
-                <TextBlock Text="删除选中的文件" 
-                          TextWrapping="Wrap"
-                          TextAlignment="Center"/>
+                    Width="120"
+                    Height="50">
+                <TextBlock Text="删除选中的&#x0a;文件" 
+                          Style="{StaticResource ButtonTextBlockStyle}"/>
             </Button>
             <Button Command="{Binding ViewResultCommand}"
                     Style="{StaticResource ButtonStyle}"
-                    Width="150">
-                <TextBlock Text="查看选中文件的处理结果" 
-                          TextWrapping="Wrap"
-                          TextAlignment="Center"/>
+                    Width="120"
+                    Height="50">
+                <TextBlock Text="查看选中文件的&#x0a;处理结果" 
+                          Style="{StaticResource ButtonTextBlockStyle}"/>
             </Button>
         </StackPanel>
     </Grid>
