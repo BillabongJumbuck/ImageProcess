@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO;
+using ImageProcess.Utility;
 
 namespace ImageProcess.ViewModel;
 
@@ -61,21 +62,45 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStartProcess))]
     private async Task StartProcess()
     {
-        if (SelectedProcessType != "灰度") return;
+        Console.WriteLine($"开始处理：{SelectedProcessType}");
         
         IsProcessing = true;
         try
         {
             foreach (var file in ImageFiles)
             {
-                // 生成输出文件路径
-                string outputPath = Path.Combine(_outputDirectory, 
-                    $"{Path.GetFileNameWithoutExtension(file.FilePath)}_gray{Path.GetExtension(file.FilePath)}");
+                string suffix = SelectedProcessType switch
+                {
+                    "灰度" => "_gray",
+                    "放大至200%" => "_scale200",
+                    "缩小至50%" => "_scale50",
+                    "顺时针旋转90°" => "_rotate_cw",
+                    "逆时针旋转90°" => "_rotate_ccw",
+                    "边缘检测" => "_edge",
+                    "二值化" => "_binary",
+                    "模糊" => "_blur",
+                    _ => "_processed"
+                };
 
-                // 处理图像
-                bool success = await Task.Run(() => Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath));
+                string outputPath = Path.Combine(_outputDirectory, 
+                    $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
+
+                bool success = await Task.Run(() =>
+                {
+                    return SelectedProcessType switch
+                    {
+                        "灰度" => Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath),
+                        "放大至200%" => Utility.ImageProcess.Scale200(file.FilePath, outputPath),
+                        "缩小至50%" => Utility.ImageProcess.Scale50(file.FilePath, outputPath),
+                        "顺时针旋转90°" => Utility.ImageProcess.RotateClockwise90(file.FilePath, outputPath),
+                        "逆时针旋转90°" => Utility.ImageProcess.RotateCounterClockwise90(file.FilePath, outputPath),
+                        "边缘检测" => Utility.ImageProcess.EdgeDetection(file.FilePath, outputPath),
+                        "二值化" => Utility.ImageProcess.Threshold(file.FilePath, outputPath),
+                        "模糊" => Utility.ImageProcess.Blur(file.FilePath, outputPath),
+                        _ => false
+                    };
+                });
                 
-                // 更新状态
                 file.Status = success ? "[已处理]" : "[处理失败]";
             }
         }
@@ -87,7 +112,16 @@ public partial class MainWindowViewModel : ObservableObject
 
     private bool CanStartProcess()
     {
-        return !IsProcessing && ImageFiles.Any() && SelectedProcessType != null;
+        var hasFiles = ImageFiles.Any();
+        var hasSelectedType = !string.IsNullOrEmpty(SelectedProcessType);
+        var notProcessing = !IsProcessing;
+        
+        Console.WriteLine($"检查处理条件：");
+        Console.WriteLine($"- 是否有文件：{hasFiles}");
+        Console.WriteLine($"- 是否选择处理类型：{hasSelectedType}（当前选择：{SelectedProcessType ?? "无"}）");
+        Console.WriteLine($"- 是否未在处理中：{notProcessing}");
+        
+        return notProcessing && hasFiles && hasSelectedType;
     }
 
     [RelayCommand]
@@ -105,7 +139,58 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 ImageFiles.Add(new ImageFile { FilePath = file, Status = "[待处理]" });
             }
+            StartProcessCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    [RelayCommand]
+    private void RemoveSelected()
+    {
+        var selectedItems = ImageFiles.Where(x => x == SelectedFile).ToList();
+        foreach (var item in selectedItems)
+        {
+            ImageFiles.Remove(item);
+        }
+        StartProcessCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void ViewResult()
+    {
+        if (SelectedFile == null) return;
+        
+        // 根据处理类型选择对应的文件后缀
+        string suffix = SelectedProcessType switch
+        {
+            "灰度" => "_gray",
+            "放大至200%" => "_scale200",
+            "缩小至50%" => "_scale50",
+            "顺时针旋转90°" => "_rotate_cw",
+            "逆时针旋转90°" => "_rotate_ccw",
+            "边缘检测" => "_edge",
+            "二值化" => "_binary",
+            "模糊" => "_blur",
+            _ => "_processed"
+        };
+
+        string outputPath = Path.Combine(_outputDirectory, 
+            $"{Path.GetFileNameWithoutExtension(SelectedFile.FilePath)}{suffix}{Path.GetExtension(SelectedFile.FilePath)}");
+            
+        if (File.Exists(outputPath))
+        {
+            // 使用系统默认程序打开图片
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = outputPath,
+                UseShellExecute = true
+            });
+        }
+    }
+
+    [RelayCommand]
+    private void CancelProcess()
+    {
+        IsProcessing = false;
     }
 }
 
