@@ -6,6 +6,7 @@ using System.IO;
 using ImageProcess.Utility;
 using System.Runtime.InteropServices;
 using System.Threading;
+using ImageProcess.View;
 
 namespace ImageProcess.ViewModel;
 
@@ -14,6 +15,19 @@ public partial class MainWindowViewModel : ObservableObject
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly string _outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
     private bool _isProcessing;
+
+    // 添加静态字典来存储处理类型和对应的后缀
+    private static readonly Dictionary<string, string> ProcessTypeSuffixes = new()
+    {
+        ["灰度"] = "_gray",
+        ["放大至200%"] = "_scale200",
+        ["缩小至50%"] = "_scale50",
+        ["顺时针旋转90°"] = "_rotate_cw",
+        ["逆时针旋转90°"] = "_rotate_ccw",
+        ["边缘检测"] = "_edge",
+        ["二值化"] = "_binary",
+        ["模糊"] = "_blur"
+    };
 
     [ObservableProperty]
     private ObservableCollection<ImageFile> imageFiles = new();
@@ -29,18 +43,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel()
     {
-        // 初始化处理类型列表
-        ProcessTypes = new ObservableCollection<string>
-        {
-            "灰度",
-            "放大至200%",
-            "缩小至50%",
-            "顺时针旋转90°",
-            "逆时针旋转90°",
-            "边缘检测",
-            "二值化",
-            "模糊"
-        };
+        // 修改初始化处理类型列表
+        ProcessTypes = new ObservableCollection<string>(ProcessTypeSuffixes.Keys);
         
         // 设置默认选中第一项
         SelectedProcessType = ProcessTypes.FirstOrDefault();
@@ -74,57 +78,76 @@ public partial class MainWindowViewModel : ObservableObject
         {
             var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
             
-            for (int i = 0; i < ImageFiles.Count; i++)
+            // 限制最大并行数为处理器核心数
+            var maxParallelTasks = Environment.ProcessorCount;
+            using var semaphore = new SemaphoreSlim(maxParallelTasks);
+            
+            var tasks = ImageFiles.Select(async (file, index) =>
             {
-                var file = ImageFiles[i];
-                string suffix = SelectedProcessType switch
+                try
                 {
-                    "灰度" => "_gray",
-                    "放大至200%" => "_scale200",
-                    "缩小至50%" => "_scale50",
-                    "顺时针旋转90°" => "_rotate_cw",
-                    "逆时针旋转90°" => "_rotate_ccw",
-                    "边缘检测" => "_edge",
-                    "二值化" => "_binary",
-                    "模糊" => "_blur",
-                    _ => "_processed"
-                };
+                    await semaphore.WaitAsync(_cancellationTokenSource.Token);
+                    
+                    string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
 
-                string outputPath = Path.Combine(_outputDirectory, 
-                    $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
+                    string outputPath = Path.Combine(_outputDirectory, 
+                        $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
 
-                // 发送处理中消息
-                WindowsMessage.PostMessage(mainWindowHandle, 
-                    WindowsMessage.WM_PROGRESS_UPDATE, 
-                    (IntPtr)i,  // 文件索引
-                    (IntPtr)0); // 状态：处理中
+                    // 发送处理中状态
+                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, 0);
 
-                bool success = await Task.Run(() =>
-                {
-                    return SelectedProcessType switch
+                    bool success = await Task.Run(async () =>
                     {
-                        "灰度" => Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath),
-                        "放大至200%" => Utility.ImageProcess.Scale200(file.FilePath, outputPath),
-                        "缩小至50%" => Utility.ImageProcess.Scale50(file.FilePath, outputPath),
-                        "顺时针旋转90°" => Utility.ImageProcess.RotateClockwise90(file.FilePath, outputPath),
-                        "逆时针旋转90°" => Utility.ImageProcess.RotateCounterClockwise90(file.FilePath, outputPath),
-                        "边缘检测" => Utility.ImageProcess.EdgeDetection(file.FilePath, outputPath),
-                        "二值化" => Utility.ImageProcess.Threshold(file.FilePath, outputPath),
-                        "模糊" => Utility.ImageProcess.Blur(file.FilePath, outputPath),
-                        _ => false
-                    };
-                });
-                
-                // 发送处理完成/失败消息
-                WindowsMessage.PostMessage(mainWindowHandle, 
-                    WindowsMessage.WM_PROGRESS_UPDATE, 
-                    (IntPtr)i,                    // 文件索引
-                    (IntPtr)(success ? 1 : 2));   // 状态：1=完成，2=失败
-            }
+                        try
+                        {
+                            await Task.Delay(1000, _cancellationTokenSource.Token);
+                            
+                            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                            {
+                                return false;
+                            }
+
+                            return ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed") switch
+                            {
+                                "_gray" => await Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_scale200" => await Utility.ImageProcess.Scale200(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_scale50" => await Utility.ImageProcess.Scale50(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_rotate_cw" => await Utility.ImageProcess.RotateClockwise90(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_rotate_ccw" => await Utility.ImageProcess.RotateCounterClockwise90(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_edge" => await Utility.ImageProcess.EdgeDetection(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_binary" => await Utility.ImageProcess.Threshold(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_blur" => await Utility.ImageProcess.Blur(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                _ => false
+                            };
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // 发送已取消状态
+                            WindowsMessage.SendProgressMessage(mainWindowHandle, index, 3);
+                            throw;
+                        }
+                    }, _cancellationTokenSource.Token);
+
+                    // 发送处理结果状态
+                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, success ? 1 : 2);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }).ToList();
+
+            await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException)
+        {
+            // 处理取消操作
         }
         finally
         {
             IsProcessing = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
         }
     }
 
@@ -133,11 +156,6 @@ public partial class MainWindowViewModel : ObservableObject
         var hasFiles = ImageFiles.Any();
         var hasSelectedType = !string.IsNullOrEmpty(SelectedProcessType);
         var notProcessing = !IsProcessing;
-        
-        Console.WriteLine($"检查处理条件：");
-        Console.WriteLine($"- 是否有文件：{hasFiles}");
-        Console.WriteLine($"- 是否选择处理类型：{hasSelectedType}（当前选择：{SelectedProcessType ?? "无"}）");
-        Console.WriteLine($"- 是否未在处理中：{notProcessing}");
         
         return notProcessing && hasFiles && hasSelectedType;
     }
@@ -177,38 +195,22 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (SelectedFile == null) return;
         
-        // 根据处理类型选择对应的文件后缀
-        string suffix = SelectedProcessType switch
-        {
-            "灰度" => "_gray",
-            "放大至200%" => "_scale200",
-            "缩小至50%" => "_scale50",
-            "顺时针旋转90°" => "_rotate_cw",
-            "逆时针旋转90°" => "_rotate_ccw",
-            "边缘检测" => "_edge",
-            "二值化" => "_binary",
-            "模糊" => "_blur",
-            _ => "_processed"
-        };
+        string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
 
         string outputPath = Path.Combine(_outputDirectory, 
             $"{Path.GetFileNameWithoutExtension(SelectedFile.FilePath)}{suffix}{Path.GetExtension(SelectedFile.FilePath)}");
             
         if (File.Exists(outputPath))
         {
-            // 使用系统默认程序打开图片
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = outputPath,
-                UseShellExecute = true
-            });
+            var window = new ShowImagesWindow(SelectedFile.FilePath, outputPath, SelectedProcessType ?? "未知处理");
+            window.Show();
         }
     }
 
     [RelayCommand]
     private void CancelProcess()
     {
-        IsProcessing = false;
+        _cancellationTokenSource?.Cancel();
     }
 }
 

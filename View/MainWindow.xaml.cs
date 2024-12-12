@@ -11,6 +11,7 @@ using System.Windows.Shapes;
 using ImageProcess.ViewModel;
 using System.Windows.Interop;
 using ImageProcess.Utility;
+using System.Runtime.InteropServices;
 
 namespace ImageProcess
 {
@@ -39,22 +40,25 @@ namespace ImageProcess
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == WindowsMessage.WM_PROGRESS_UPDATE)
+            if (msg == WindowsMessage.WM_COPYDATA)
             {
-                int fileIndex = wParam.ToInt32();
-                int status = lParam.ToInt32();
-
-                if (fileIndex >= 0 && fileIndex < _viewModel.ImageFiles.Count)
+                var cds = (WindowsMessage.COPYDATASTRUCT)Marshal.PtrToStructure(lParam, typeof(WindowsMessage.COPYDATASTRUCT));
+                
+                int fileIndex = cds.dwData.ToInt32();
+                if (int.TryParse(cds.lpData, out int status))
                 {
-                    var file = _viewModel.ImageFiles[fileIndex];
-                    file.Status = status switch
+                    if (fileIndex >= 0 && fileIndex < _viewModel.ImageFiles.Count)
                     {
-                        0 => "[处理中]",
-                        1 => "[处理完毕]",
-                        2 => "[处理失败]",
-                        3 => "[已取消]",
-                        _ => file.Status
-                    };
+                        var file = _viewModel.ImageFiles[fileIndex];
+                        file.Status = status switch
+                        {
+                            0 => "[处理中]",
+                            1 => "[处理完毕]",
+                            2 => "[处理失败]",
+                            3 => "[已取消]",
+                            _ => file.Status
+                        };
+                    }
                 }
                 handled = true;
             }
