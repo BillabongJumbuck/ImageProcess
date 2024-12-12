@@ -2,13 +2,15 @@
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
-using System.Windows.Input;
-using System.Linq;
+using System.IO;
 
 namespace ImageProcess.ViewModel;
 
 public partial class MainWindowViewModel : ObservableObject
 {
+    private readonly string _outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
+    private bool _isProcessing;
+
     [ObservableProperty]
     private ObservableCollection<ImageFile> imageFiles = new();
 
@@ -38,6 +40,54 @@ public partial class MainWindowViewModel : ObservableObject
         
         // 设置默认选中第一项
         SelectedProcessType = ProcessTypes.FirstOrDefault();
+        
+        // 确保输出目录存在
+        if (!Directory.Exists(_outputDirectory))
+        {
+            Directory.CreateDirectory(_outputDirectory);
+        }
+    }
+
+    public bool IsProcessing
+    {
+        get => _isProcessing;
+        set
+        {
+            SetProperty(ref _isProcessing, value);
+            StartProcessCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStartProcess))]
+    private async Task StartProcess()
+    {
+        if (SelectedProcessType != "灰度") return;
+        
+        IsProcessing = true;
+        try
+        {
+            foreach (var file in ImageFiles)
+            {
+                // 生成输出文件路径
+                string outputPath = Path.Combine(_outputDirectory, 
+                    $"{Path.GetFileNameWithoutExtension(file.FilePath)}_gray{Path.GetExtension(file.FilePath)}");
+
+                // 处理图像
+                bool success = await Task.Run(() => Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath));
+                
+                // 更新状态
+                file.Status = success ? "[已处理]" : "[处理失败]";
+            }
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private bool CanStartProcess()
+    {
+        return !IsProcessing && ImageFiles.Any() && SelectedProcessType != null;
     }
 
     [RelayCommand]
@@ -56,33 +106,6 @@ public partial class MainWindowViewModel : ObservableObject
                 ImageFiles.Add(new ImageFile { FilePath = file, Status = "[待处理]" });
             }
         }
-    }
-
-    [RelayCommand]
-    private void RemoveSelected()
-    {
-        if (SelectedFile != null)
-        {
-            ImageFiles.Remove(SelectedFile);
-        }
-    }
-
-    [RelayCommand]
-    private void StartProcess()
-    {
-        // TODO: 实现多线程处理逻辑
-    }
-
-    [RelayCommand]
-    private void CancelProcess()
-    {
-        // TODO: 实现取消处理逻辑
-    }
-
-    [RelayCommand]
-    private void ViewResult()
-    {
-        // TODO: 实现查看结果逻辑
     }
 }
 
