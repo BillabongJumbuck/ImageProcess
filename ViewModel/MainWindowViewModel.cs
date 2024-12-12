@@ -4,11 +4,14 @@ using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO;
 using ImageProcess.Utility;
+using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace ImageProcess.ViewModel;
 
 public partial class MainWindowViewModel : ObservableObject
 {
+    private CancellationTokenSource? _cancellationTokenSource;
     private readonly string _outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
     private bool _isProcessing;
 
@@ -65,15 +68,15 @@ public partial class MainWindowViewModel : ObservableObject
         Console.WriteLine($"开始处理：{SelectedProcessType}");
         
         IsProcessing = true;
+        _cancellationTokenSource = new CancellationTokenSource();
+        
         try
         {
-            var progress = new Progress<(ImageFile File, string Status)>(update =>
+            var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
+            
+            for (int i = 0; i < ImageFiles.Count; i++)
             {
-                update.File.Status = update.Status;
-            });
-
-            foreach (var file in ImageFiles)
-            {
+                var file = ImageFiles[i];
                 string suffix = SelectedProcessType switch
                 {
                     "灰度" => "_gray",
@@ -90,8 +93,11 @@ public partial class MainWindowViewModel : ObservableObject
                 string outputPath = Path.Combine(_outputDirectory, 
                     $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
 
-                // 更新状态为处理中
-                ((IProgress<(ImageFile, string)>)progress).Report((file, "[处理中]"));
+                // 发送处理中消息
+                WindowsMessage.PostMessage(mainWindowHandle, 
+                    WindowsMessage.WM_PROGRESS_UPDATE, 
+                    (IntPtr)i,  // 文件索引
+                    (IntPtr)0); // 状态：处理中
 
                 bool success = await Task.Run(() =>
                 {
@@ -109,8 +115,11 @@ public partial class MainWindowViewModel : ObservableObject
                     };
                 });
                 
-                // 更新最终状态
-                ((IProgress<(ImageFile, string)>)progress).Report((file, success ? "[处理完毕]" : "[处理失败]"));
+                // 发送处理完成/失败消息
+                WindowsMessage.PostMessage(mainWindowHandle, 
+                    WindowsMessage.WM_PROGRESS_UPDATE, 
+                    (IntPtr)i,                    // 文件索引
+                    (IntPtr)(success ? 1 : 2));   // 状态：1=完成，2=失败
             }
         }
         finally
