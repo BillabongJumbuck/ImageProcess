@@ -12,7 +12,7 @@ namespace ImageProcess.ViewModel;
 
 public partial class MainWindowViewModel : ObservableObject
 {
-    private CancellationTokenSource? _cancellationTokenSource;
+    private Dictionary<ImageFile, CancellationTokenSource> _cancellationTokenSources = new();
     private readonly string _outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
     private bool _isProcessing;
 
@@ -69,71 +69,63 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStartProcess))]
     private async Task StartProcess()
     {
-        Console.WriteLine($"开始处理：{SelectedProcessType}");
-        
         IsProcessing = true;
-        _cancellationTokenSource = new CancellationTokenSource();
         
         try
         {
             var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
             
-            // 限制最大并行数为处理器核心数
             var maxParallelTasks = Environment.ProcessorCount;
             using var semaphore = new SemaphoreSlim(maxParallelTasks);
             
             var tasks = ImageFiles.Select(async (file, index) =>
             {
+                var cts = new CancellationTokenSource();
+                _cancellationTokenSources[file] = cts;
+
                 try
                 {
-                    await semaphore.WaitAsync(_cancellationTokenSource.Token);
+                    await semaphore.WaitAsync(cts.Token);
                     
                     string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
-
                     string outputPath = Path.Combine(_outputDirectory, 
                         $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
 
                     // 发送处理中状态
-                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, 0);
+                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, WindowsMessage.ProcessStatus.Processing);
 
                     bool success = await Task.Run(async () =>
                     {
                         try
                         {
-                            await Task.Delay(1000, _cancellationTokenSource.Token);
-                            
-                            if (_cancellationTokenSource.Token.IsCancellationRequested)
-                            {
-                                return false;
-                            }
-
                             return ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed") switch
                             {
-                                "_gray" => await Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_scale200" => await Utility.ImageProcess.Scale200(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_scale50" => await Utility.ImageProcess.Scale50(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_rotate_cw" => await Utility.ImageProcess.RotateClockwise90(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_rotate_ccw" => await Utility.ImageProcess.RotateCounterClockwise90(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_edge" => await Utility.ImageProcess.EdgeDetection(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_binary" => await Utility.ImageProcess.Threshold(file.FilePath, outputPath, _cancellationTokenSource.Token),
-                                "_blur" => await Utility.ImageProcess.Blur(file.FilePath, outputPath, _cancellationTokenSource.Token),
+                                "_gray" => await Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath, cts.Token),
+                                "_scale200" => await Utility.ImageProcess.Scale200(file.FilePath, outputPath, cts.Token),
+                                "_scale50" => await Utility.ImageProcess.Scale50(file.FilePath, outputPath, cts.Token),
+                                "_rotate_cw" => await Utility.ImageProcess.RotateClockwise90(file.FilePath, outputPath, cts.Token),
+                                "_rotate_ccw" => await Utility.ImageProcess.RotateCounterClockwise90(file.FilePath, outputPath, cts.Token),
+                                "_edge" => await Utility.ImageProcess.EdgeDetection(file.FilePath, outputPath, cts.Token),
+                                "_binary" => await Utility.ImageProcess.Threshold(file.FilePath, outputPath, cts.Token),
+                                "_blur" => await Utility.ImageProcess.Blur(file.FilePath, outputPath, cts.Token),
                                 _ => false
                             };
                         }
                         catch (OperationCanceledException)
                         {
-                            // 发送已取消状态
-                            WindowsMessage.SendProgressMessage(mainWindowHandle, index, 3);
+                            WindowsMessage.SendProgressMessage(mainWindowHandle, index, WindowsMessage.ProcessStatus.Cancelled);
                             throw;
                         }
-                    }, _cancellationTokenSource.Token);
+                    }, cts.Token);
 
-                    // 发送处理结果状态
-                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, success ? 1 : 2);
+                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, 
+                        success ? WindowsMessage.ProcessStatus.Completed : WindowsMessage.ProcessStatus.Failed);
                 }
                 finally
                 {
                     semaphore.Release();
+                    _cancellationTokenSources.Remove(file);
+                    cts.Dispose();
                 }
             }).ToList();
 
@@ -146,8 +138,6 @@ public partial class MainWindowViewModel : ObservableObject
         finally
         {
             IsProcessing = false;
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = null;
         }
     }
 
@@ -210,7 +200,10 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void CancelProcess()
     {
-        _cancellationTokenSource?.Cancel();
+        if (SelectedFile != null && _cancellationTokenSources.TryGetValue(SelectedFile, out var cts))
+        {
+            cts.Cancel();
+        }
     }
 }
 

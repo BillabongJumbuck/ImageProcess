@@ -20,7 +20,15 @@ public static class WindowsMessage
     [DllImport("User32.dll")]
     public static extern int SendMessage(IntPtr hwnd, int msg, IntPtr wParam, ref COPYDATASTRUCT lParam);
 
-    public static void SendProgressMessage(IntPtr hwnd, int fileIndex, int status)
+    public enum ProcessStatus
+    {
+        Processing = 0,
+        Completed = 1,
+        Failed = 2,
+        Cancelled = 3
+    }
+
+    public static void SendProgressMessage(IntPtr hwnd, int fileIndex, ProcessStatus status)
     {
         if (hwnd != IntPtr.Zero)
         {
@@ -28,7 +36,7 @@ public static class WindowsMessage
             {
                 dwData = (IntPtr)fileIndex,
                 cbData = sizeof(int),
-                lpData = status.ToString()
+                lpData = ((int)status).ToString()
             };
 
             SendMessage(hwnd, WM_COPYDATA, IntPtr.Zero, ref cds);

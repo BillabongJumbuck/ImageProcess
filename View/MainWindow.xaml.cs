@@ -45,17 +45,18 @@ namespace ImageProcess
                 var cds = (WindowsMessage.COPYDATASTRUCT)Marshal.PtrToStructure(lParam, typeof(WindowsMessage.COPYDATASTRUCT));
                 
                 int fileIndex = cds.dwData.ToInt32();
-                if (int.TryParse(cds.lpData, out int status))
+                if (int.TryParse(cds.lpData, out int statusValue))
                 {
+                    var status = (WindowsMessage.ProcessStatus)statusValue;
                     if (fileIndex >= 0 && fileIndex < _viewModel.ImageFiles.Count)
                     {
                         var file = _viewModel.ImageFiles[fileIndex];
                         file.Status = status switch
                         {
-                            0 => "[处理中]",
-                            1 => "[处理完毕]",
-                            2 => "[处理失败]",
-                            3 => "[已取消]",
+                            WindowsMessage.ProcessStatus.Processing => "[处理中]",
+                            WindowsMessage.ProcessStatus.Completed => "[处理完毕]",
+                            WindowsMessage.ProcessStatus.Failed => "[处理失败]",
+                            WindowsMessage.ProcessStatus.Cancelled => "[已取消]",
                             _ => file.Status
                         };
                     }
