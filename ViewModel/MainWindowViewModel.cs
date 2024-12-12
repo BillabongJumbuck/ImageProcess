@@ -67,6 +67,11 @@ public partial class MainWindowViewModel : ObservableObject
         IsProcessing = true;
         try
         {
+            var progress = new Progress<(ImageFile File, string Status)>(update =>
+            {
+                update.File.Status = update.Status;
+            });
+
             foreach (var file in ImageFiles)
             {
                 string suffix = SelectedProcessType switch
@@ -85,6 +90,9 @@ public partial class MainWindowViewModel : ObservableObject
                 string outputPath = Path.Combine(_outputDirectory, 
                     $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
 
+                // 更新状态为处理中
+                ((IProgress<(ImageFile, string)>)progress).Report((file, "[处理中]"));
+
                 bool success = await Task.Run(() =>
                 {
                     return SelectedProcessType switch
@@ -101,7 +109,8 @@ public partial class MainWindowViewModel : ObservableObject
                     };
                 });
                 
-                file.Status = success ? "[已处理]" : "[处理失败]";
+                // 更新最终状态
+                ((IProgress<(ImageFile, string)>)progress).Report((file, success ? "[处理完毕]" : "[处理失败]"));
             }
         }
         finally
