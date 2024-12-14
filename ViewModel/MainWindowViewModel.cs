@@ -12,7 +12,7 @@ namespace ImageProcess.ViewModel;
 
 public partial class MainWindowViewModel : ObservableObject
 {
-    private Dictionary<ImageFile, CancellationTokenSource> _cancellationTokenSources = new();
+    private readonly Dictionary<ImageFile, CancellationTokenSource> _cancellationTokenSources = new();
     private readonly string _outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
     private bool _isProcessing;
 
@@ -56,7 +56,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    public bool IsProcessing
+    private bool IsProcessing
     {
         get => _isProcessing;
         set
@@ -75,9 +75,6 @@ public partial class MainWindowViewModel : ObservableObject
         {
             var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
             
-            var maxParallelTasks = Environment.ProcessorCount;
-            using var semaphore = new SemaphoreSlim(maxParallelTasks);
-            
             var tasks = ImageFiles.Select(async (file, index) =>
             {
                 var cts = new CancellationTokenSource();
@@ -85,8 +82,6 @@ public partial class MainWindowViewModel : ObservableObject
 
                 try
                 {
-                    await semaphore.WaitAsync(cts.Token);
-                    
                     string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
                     string outputPath = Path.Combine(_outputDirectory, 
                         $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
@@ -123,7 +118,6 @@ public partial class MainWindowViewModel : ObservableObject
                 }
                 finally
                 {
-                    semaphore.Release();
                     _cancellationTokenSources.Remove(file);
                     cts.Dispose();
                 }

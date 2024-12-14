@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using System.IO;
+using OpenCvSharp;
 
 namespace ImageProcess.Utility;
 
@@ -66,7 +67,7 @@ public static class ImageProcess
         return await ProcessImage(inputPath, outputPath, cancellationToken, src =>
         {
             var dst = new Mat();
-            Cv2.Resize(src, dst, new Size(), 2.0, 2.0, InterpolationFlags.Linear);
+            Cv2.Resize(src, dst, new Size(), 1.414, 1.414, InterpolationFlags.Linear);
             return dst;
         });
     }
@@ -79,7 +80,7 @@ public static class ImageProcess
         return await ProcessImage(inputPath, outputPath, cancellationToken, src =>
         {
             var dst = new Mat();
-            Cv2.Resize(src, dst, new Size(), 0.5, 0.5, InterpolationFlags.Linear);
+            Cv2.Resize(src, dst, new Size(), 0.707, 0.707, InterpolationFlags.Linear);
             return dst;
         });
     }

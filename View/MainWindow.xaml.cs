@@ -29,7 +29,7 @@ namespace ImageProcess
             _viewModel = new MainWindowViewModel();
             DataContext = _viewModel;
 
-            // 窗口加载完成后获取窗口句柄
+            // 窗口加载完成后获取窗口句柄, 并添加钩子
             this.Loaded += (s, e) =>
             {
                 _windowHandle = new WindowInteropHelper(this).Handle;
@@ -42,10 +42,11 @@ namespace ImageProcess
         {
             if (msg == WindowsMessage.WM_COPYDATA)
             {
-                var cds = (WindowsMessage.COPYDATASTRUCT)Marshal.PtrToStructure(lParam, typeof(WindowsMessage.COPYDATASTRUCT));
+                var cds = (WindowsMessage.COPYDATASTRUCT)(Marshal.PtrToStructure(lParam, typeof(WindowsMessage.COPYDATASTRUCT)) ?? throw new
+                    InvalidOperationException());
                 
-                int fileIndex = cds.dwData.ToInt32();
-                if (int.TryParse(cds.lpData, out int statusValue))
+                int fileIndex = cds.DwData.ToInt32();
+                if (int.TryParse(cds.LpData, out int statusValue))
                 {
                     var status = (WindowsMessage.ProcessStatus)statusValue;
                     if (fileIndex >= 0 && fileIndex < _viewModel.ImageFiles.Count)

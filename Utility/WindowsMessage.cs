@@ -8,10 +8,10 @@ public static class WindowsMessage
 
     public struct COPYDATASTRUCT
     {
-        public IntPtr dwData;    // 用于传递处理索引
-        public int cbData;       // 数据大小
+        public IntPtr DwData;    // 用于传递处理索引
+        public int CbData;       // 数据大小
         [MarshalAs(UnmanagedType.LPStr)]
-        public string lpData;    // 状态信息
+        public string LpData;    // 状态信息
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
@@ -34,9 +34,9 @@ public static class WindowsMessage
         {
             var cds = new COPYDATASTRUCT
             {
-                dwData = (IntPtr)fileIndex,
-                cbData = sizeof(int),
-                lpData = ((int)status).ToString()
+                DwData = fileIndex,
+                CbData = sizeof(int),
+                LpData = ((int)status).ToString()
             };
 
             SendMessage(hwnd, WM_COPYDATA, IntPtr.Zero, ref cds);
