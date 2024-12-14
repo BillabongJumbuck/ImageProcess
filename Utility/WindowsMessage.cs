@@ -22,10 +22,10 @@ public static class WindowsMessage
 
     public enum ProcessStatus
     {
-        Processing = 0,
-        Completed = 1,
-        Failed = 2,
-        Cancelled = 3
+        Processing = 0, // 处理中
+        Completed = 1,  // 完成
+        Failed = 2,     // 失败
+        Cancelled = 3   // 取消
     }
 
     public static void SendProgressMessage(IntPtr hwnd, int fileIndex, ProcessStatus status)

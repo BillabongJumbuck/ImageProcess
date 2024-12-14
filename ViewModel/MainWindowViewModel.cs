@@ -4,8 +4,6 @@ using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO;
 using ImageProcess.Utility;
-using System.Runtime.InteropServices;
-using System.Threading;
 using ImageProcess.View;
 
 namespace ImageProcess.ViewModel;
