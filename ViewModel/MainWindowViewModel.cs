@@ -68,30 +68,31 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task StartProcess()
     {
         IsProcessing = true;
+        var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
+        var threads = new List<Thread>();
         
-        try
+        try 
         {
-            var mainWindowHandle = WindowsMessage.FindWindow(null, "图像处理");
-            
-            var tasks = ImageFiles.Select(async (file, index) =>
+            foreach (var (file, index) in ImageFiles.Select((f, i) => (f, i)))
             {
                 var cts = new CancellationTokenSource();
                 _cancellationTokenSources[file] = cts;
 
-                try
+                var thread = new Thread(async () =>
                 {
-                    string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
-                    string outputPath = Path.Combine(_outputDirectory, 
-                        $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
-
-                    // 发送处理中状态
-                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, WindowsMessage.ProcessStatus.Processing);
-
-                    bool success = await Task.Run(async () =>
+                    try
                     {
+                        string suffix = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed");
+                        string outputPath = Path.Combine(_outputDirectory, 
+                            $"{Path.GetFileNameWithoutExtension(file.FilePath)}{suffix}{Path.GetExtension(file.FilePath)}");
+
+                        // 发送处理中状态
+                        WindowsMessage.SendProgressMessage(mainWindowHandle, index, WindowsMessage.ProcessStatus.Processing);
+
+                        bool success = false;
                         try
                         {
-                            return ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed") switch
+                            success = ProcessTypeSuffixes.GetValueOrDefault(SelectedProcessType ?? "", "_processed") switch
                             {
                                 "_gray" => await Utility.ImageProcess.ToGrayScale(file.FilePath, outputPath, cts.Token),
                                 "_scale200" => await Utility.ImageProcess.Scale200(file.FilePath, outputPath, cts.Token),
@@ -103,29 +104,34 @@ public partial class MainWindowViewModel : ObservableObject
                                 "_blur" => await Utility.ImageProcess.Blur(file.FilePath, outputPath, cts.Token),
                                 _ => false
                             };
+
+                            WindowsMessage.SendProgressMessage(mainWindowHandle, index, 
+                                success ? WindowsMessage.ProcessStatus.Completed : WindowsMessage.ProcessStatus.Failed);
                         }
                         catch (OperationCanceledException)
                         {
                             WindowsMessage.SendProgressMessage(mainWindowHandle, index, WindowsMessage.ProcessStatus.Cancelled);
-                            throw;
                         }
-                    }, cts.Token);
+                    }
+                    finally
+                    {
+                        _cancellationTokenSources.Remove(file);
+                        cts.Dispose();
+                    }
+                });
 
-                    WindowsMessage.SendProgressMessage(mainWindowHandle, index, 
-                        success ? WindowsMessage.ProcessStatus.Completed : WindowsMessage.ProcessStatus.Failed);
-                }
-                finally
+                thread.Start();
+                threads.Add(thread);
+            }
+
+            // 等待所有线程完成
+            await Task.Run(() =>
+            {
+                foreach (var thread in threads)
                 {
-                    _cancellationTokenSources.Remove(file);
-                    cts.Dispose();
+                    thread.Join();
                 }
-            }).ToList();
-
-            await Task.WhenAll(tasks);
-        }
-        catch (OperationCanceledException)
-        {
-            // 处理取消操作
+            });
         }
         finally
         {
