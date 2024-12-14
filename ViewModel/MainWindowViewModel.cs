@@ -5,7 +5,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using ImageProcess.Utility;
 using ImageProcess.View;
-
+using ImageProcess.Model;
 namespace ImageProcess.ViewModel;
 
 public partial class MainWindowViewModel : ObservableObject
@@ -210,24 +210,5 @@ public partial class MainWindowViewModel : ObservableObject
         {
             cts.Cancel();
         }
-    }
-}
-
-public class ImageFile : ObservableObject
-{
-    private string filePath = string.Empty;
-
-    public string FilePath
-    {
-        get => filePath;
-        set => SetProperty(ref filePath, value);
-    }
-
-    private string status = "[待处理]";
-
-    public string Status
-    {
-        get => status;
-        set => SetProperty(ref status, value);
     }
 }
